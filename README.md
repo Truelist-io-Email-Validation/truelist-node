@@ -3,7 +3,7 @@
 Official Node.js SDK for the [Truelist.io](https://truelist.io) email validation API.
 
 [![npm version](https://img.shields.io/npm/v/truelist.svg)](https://www.npmjs.com/package/truelist)
-[![CI](https://github.com/truelist/truelist-node/actions/workflows/ci.yml/badge.svg)](https://github.com/truelist/truelist-node/actions/workflows/ci.yml)
+[![CI](https://github.com/Truelist-io-Email-Validation/truelist-node/actions/workflows/ci.yml/badge.svg)](https://github.com/Truelist-io-Email-Validation/truelist-node/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ```bash
