@@ -17,43 +17,41 @@ import Truelist from "truelist";
 
 const truelist = new Truelist("your-api-key");
 const result = await truelist.email.validate("user@example.com");
-console.log(result.state); // "valid"
+console.log(result.state); // "ok"
 ```
 
 ## Usage
 
 ### Validate an Email
 
-Use `email.validate()` for server-side email validation (10 req/s rate limit):
-
 ```ts
+import { isValid, isDisposable, isRole } from "truelist";
+
 const result = await truelist.email.validate("user@example.com");
 
-console.log(result.state);     // "valid" | "invalid" | "risky" | "unknown"
-console.log(result.subState);  // "ok" | "disposable_address" | ...
-console.log(result.freeEmail); // true
-console.log(result.role);      // false
-console.log(result.disposable); // false
+console.log(result.email);      // "user@example.com"
+console.log(result.domain);     // "example.com"
+console.log(result.state);      // "ok" | "email_invalid" | "risky" | "unknown" | "accept_all"
+console.log(result.subState);   // "email_ok" | "is_disposable" | ...
 console.log(result.suggestion); // null or suggested correction
+console.log(result.verifiedAt); // "2026-02-21T10:00:00.000Z"
+
+// Convenience methods
+console.log(isValid(result));      // true
+console.log(isDisposable(result)); // false
+console.log(isRole(result));       // false
 ```
-
-### Form-Level Validation
-
-Use `email.formValidate()` for frontend form validation (60 req/min rate limit):
-
-```ts
-const result = await truelist.email.formValidate("user@example.com");
-```
-
-The response shape is identical to `email.validate()`.
 
 ### Check Account Info
 
 ```ts
 const account = await truelist.account.get();
-console.log(account.email);   // "you@company.com"
-console.log(account.plan);    // "pro"
-console.log(account.credits); // 9500
+console.log(account.email);               // "you@company.com"
+console.log(account.name);                // "Your Name"
+console.log(account.uuid);                // "a3828d19-..."
+console.log(account.timeZone);            // "America/New_York"
+console.log(account.isAdminRole);         // true
+console.log(account.account.paymentPlan); // "pro"
 ```
 
 ### Cancel a Request
@@ -144,11 +142,35 @@ import type {
 
 ### ValidationState
 
-`"valid"` | `"invalid"` | `"risky"` | `"unknown"`
+`"ok"` | `"email_invalid"` | `"risky"` | `"unknown"` | `"accept_all"`
 
 ### ValidationSubState
 
-`"ok"` | `"accept_all"` | `"disposable_address"` | `"role_address"` | `"failed_mx_check"` | `"failed_spam_trap"` | `"failed_no_mailbox"` | `"failed_greylisted"` | `"failed_syntax_check"` | `"unknown"`
+`"email_ok"` | `"accept_all"` | `"is_disposable"` | `"is_role"` | `"failed_smtp_check"` | `"failed_mx_check"` | `"failed_spam_trap"` | `"failed_no_mailbox"` | `"failed_greylisted"` | `"failed_syntax_check"` | `"unknown_error"`
+
+### ValidationResult
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `email` | `string` | The email address validated |
+| `domain` | `string` | Domain part of the email |
+| `canonical` | `string` | Canonical (local) part of the email |
+| `mxRecord` | `string \| null` | MX record for the domain |
+| `firstName` | `string \| null` | First name (if detected) |
+| `lastName` | `string \| null` | Last name (if detected) |
+| `state` | `ValidationState` | Overall validation state |
+| `subState` | `ValidationSubState` | Detailed sub-state |
+| `verifiedAt` | `string` | ISO timestamp of verification |
+| `suggestion` | `string \| null` | Did-you-mean suggestion |
+
+### Convenience Methods
+
+| Function | Description |
+|----------|-------------|
+| `isValid(result)` | `true` if `state === "ok"` |
+| `isInvalid(result)` | `true` if `state === "email_invalid"` |
+| `isDisposable(result)` | `true` if `subState === "is_disposable"` |
+| `isRole(result)` | `true` if `subState === "is_role"` |
 
 ## Edge Runtime Support
 
@@ -185,19 +207,13 @@ Create a new Truelist client.
 
 ### `truelist.email.validate(email, options?)`
 
-Validate an email address (server-side). Rate limit: 10 req/s.
-
-Returns `Promise<ValidationResult>`.
-
-### `truelist.email.formValidate(email, options?)`
-
-Validate an email address (form-level, frontend use). Rate limit: 60 req/min.
+Validate an email address.
 
 Returns `Promise<ValidationResult>`.
 
 ### `truelist.account.get()`
 
-Get account information including remaining credits.
+Get account information.
 
 Returns `Promise<AccountInfo>`.
 

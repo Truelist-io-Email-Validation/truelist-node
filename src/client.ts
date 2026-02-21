@@ -16,14 +16,32 @@ const DEFAULT_MAX_RETRIES = 2;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 function toValidationResult(raw: ApiValidationResponse): ValidationResult {
+  const entry = raw.emails[0];
+  return {
+    email: entry.address,
+    domain: entry.domain,
+    canonical: entry.canonical,
+    mxRecord: entry.mx_record,
+    firstName: entry.first_name,
+    lastName: entry.last_name,
+    state: entry.email_state,
+    subState: entry.email_sub_state,
+    verifiedAt: entry.verified_at,
+    suggestion: entry.did_you_mean,
+  };
+}
+
+function toAccountInfo(raw: ApiAccountResponse): AccountInfo {
   return {
     email: raw.email,
-    state: raw.state,
-    subState: raw.sub_state,
-    freeEmail: raw.free_email,
-    role: raw.role,
-    disposable: raw.disposable,
-    suggestion: raw.suggestion,
+    name: raw.name,
+    uuid: raw.uuid,
+    timeZone: raw.time_zone,
+    isAdminRole: raw.is_admin_role,
+    account: {
+      name: raw.account.name,
+      paymentPlan: raw.account.payment_plan,
+    },
   };
 }
 
@@ -35,7 +53,6 @@ class Truelist {
 
   email: {
     validate: (email: string, options?: ValidateOptions) => Promise<ValidationResult>;
-    formValidate: (email: string, options?: ValidateOptions) => Promise<ValidationResult>;
   };
 
   account: {
@@ -56,7 +73,6 @@ class Truelist {
 
     this.email = {
       validate: (email: string, opts?: ValidateOptions) => this.validateEmail(email, opts),
-      formValidate: (email: string, opts?: ValidateOptions) => this.formValidateEmail(email, opts),
     };
 
     this.account = {
@@ -65,22 +81,19 @@ class Truelist {
   }
 
   private async validateEmail(email: string, options?: ValidateOptions): Promise<ValidationResult> {
-    const raw = await this.request<ApiValidationResponse>("POST", "/api/v1/verify", { email }, options?.signal);
-    return toValidationResult(raw);
-  }
-
-  private async formValidateEmail(email: string, options?: ValidateOptions): Promise<ValidationResult> {
-    const raw = await this.request<ApiValidationResponse>("POST", "/api/v1/form_verify", { email }, options?.signal);
+    const queryParam = encodeURIComponent(email);
+    const raw = await this.request<ApiValidationResponse>(
+      "POST",
+      `/api/v1/verify_inline?email=${queryParam}`,
+      undefined,
+      options?.signal
+    );
     return toValidationResult(raw);
   }
 
   private async getAccount(): Promise<AccountInfo> {
-    const raw = await this.request<ApiAccountResponse>("GET", "/api/v1/account");
-    return {
-      email: raw.email,
-      plan: raw.plan,
-      credits: raw.credits,
-    };
+    const raw = await this.request<ApiAccountResponse>("GET", "/me");
+    return toAccountInfo(raw);
   }
 
   private async request<T>(
@@ -240,6 +253,23 @@ class Truelist {
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+// Convenience methods on ValidationResult
+export function isValid(result: ValidationResult): boolean {
+  return result.state === "ok";
+}
+
+export function isInvalid(result: ValidationResult): boolean {
+  return result.state === "email_invalid";
+}
+
+export function isDisposable(result: ValidationResult): boolean {
+  return result.subState === "is_disposable";
+}
+
+export function isRole(result: ValidationResult): boolean {
+  return result.subState === "is_role";
 }
 
 export default Truelist;
