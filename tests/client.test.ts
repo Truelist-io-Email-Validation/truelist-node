@@ -4,25 +4,45 @@ import Truelist, {
   AuthenticationError,
   RateLimitError,
   ApiError,
+  isValid,
+  isInvalid,
+  isDisposable,
+  isRole,
 } from "../src/index";
 import type { ValidationResult, AccountInfo } from "../src/index";
 
 const API_KEY = "test_api_key_123";
 
 const mockValidationResponse = {
-  email: "user@example.com",
-  state: "valid",
-  sub_state: "ok",
-  free_email: true,
-  role: false,
-  disposable: false,
-  suggestion: null,
+  emails: [
+    {
+      address: "user@example.com",
+      domain: "example.com",
+      canonical: "user",
+      mx_record: null,
+      first_name: null,
+      last_name: null,
+      email_state: "ok",
+      email_sub_state: "email_ok",
+      verified_at: "2026-02-21T10:00:00.000Z",
+      did_you_mean: null,
+    },
+  ],
 };
 
 const mockAccountResponse = {
   email: "team@company.com",
-  plan: "pro",
-  credits: 9500,
+  name: "Team Lead",
+  uuid: "a3828d19-1234-5678-9abc-def012345678",
+  time_zone: "America/New_York",
+  is_admin_role: true,
+  token: "test_token",
+  api_keys: [],
+  account: {
+    name: "Company Inc",
+    payment_plan: "pro",
+    users: [],
+  },
 };
 
 function createMockResponse(body: unknown, init?: ResponseInit): Response {
@@ -68,7 +88,7 @@ describe("Truelist", () => {
   });
 
   describe("email.validate", () => {
-    it("sends a POST request to /api/v1/verify", async () => {
+    it("sends a POST request to /api/v1/verify_inline with email as query param", async () => {
       fetchSpy.mockResolvedValueOnce(createMockResponse(mockValidationResponse));
 
       const client = new Truelist(API_KEY);
@@ -76,9 +96,11 @@ describe("Truelist", () => {
 
       expect(fetchSpy).toHaveBeenCalledOnce();
       const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe("https://api.truelist.io/api/v1/verify");
+      expect(url).toBe(
+        "https://api.truelist.io/api/v1/verify_inline?email=user%40example.com"
+      );
       expect(options.method).toBe("POST");
-      expect(JSON.parse(options.body as string)).toEqual({ email: "user@example.com" });
+      expect(options.body).toBeUndefined();
     });
 
     it("sends the correct auth header", async () => {
@@ -103,18 +125,21 @@ describe("Truelist", () => {
       expect(headers["User-Agent"]).toMatch(/^truelist-node\//);
     });
 
-    it("converts snake_case response to camelCase", async () => {
+    it("maps API response fields to SDK properties", async () => {
       fetchSpy.mockResolvedValueOnce(createMockResponse(mockValidationResponse));
 
       const client = new Truelist(API_KEY);
       const result: ValidationResult = await client.email.validate("user@example.com");
 
       expect(result.email).toBe("user@example.com");
-      expect(result.state).toBe("valid");
-      expect(result.subState).toBe("ok");
-      expect(result.freeEmail).toBe(true);
-      expect(result.role).toBe(false);
-      expect(result.disposable).toBe(false);
+      expect(result.domain).toBe("example.com");
+      expect(result.canonical).toBe("user");
+      expect(result.mxRecord).toBeNull();
+      expect(result.firstName).toBeNull();
+      expect(result.lastName).toBeNull();
+      expect(result.state).toBe("ok");
+      expect(result.subState).toBe("email_ok");
+      expect(result.verifiedAt).toBe("2026-02-21T10:00:00.000Z");
       expect(result.suggestion).toBeNull();
     });
 
@@ -125,7 +150,9 @@ describe("Truelist", () => {
       await client.email.validate("user@example.com");
 
       const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe("https://custom.api.com/api/v1/verify");
+      expect(url).toBe(
+        "https://custom.api.com/api/v1/verify_inline?email=user%40example.com"
+      );
     });
 
     it("strips trailing slashes from baseUrl", async () => {
@@ -135,42 +162,21 @@ describe("Truelist", () => {
       await client.email.validate("user@example.com");
 
       const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe("https://custom.api.com/api/v1/verify");
-    });
-  });
-
-  describe("email.formValidate", () => {
-    it("sends a POST request to /api/v1/form_verify", async () => {
-      fetchSpy.mockResolvedValueOnce(createMockResponse(mockValidationResponse));
-
-      const client = new Truelist(API_KEY);
-      await client.email.formValidate("user@example.com");
-
-      const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe("https://api.truelist.io/api/v1/form_verify");
-      expect(options.method).toBe("POST");
-    });
-
-    it("returns the same shape as validate", async () => {
-      fetchSpy.mockResolvedValueOnce(createMockResponse(mockValidationResponse));
-
-      const client = new Truelist(API_KEY);
-      const result = await client.email.formValidate("user@example.com");
-
-      expect(result.state).toBe("valid");
-      expect(result.subState).toBe("ok");
+      expect(url).toBe(
+        "https://custom.api.com/api/v1/verify_inline?email=user%40example.com"
+      );
     });
   });
 
   describe("account.get", () => {
-    it("sends a GET request to /api/v1/account", async () => {
+    it("sends a GET request to /me", async () => {
       fetchSpy.mockResolvedValueOnce(createMockResponse(mockAccountResponse));
 
       const client = new Truelist(API_KEY);
       await client.account.get();
 
       const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe("https://api.truelist.io/api/v1/account");
+      expect(url).toBe("https://api.truelist.io/me");
       expect(options.method).toBe("GET");
     });
 
@@ -181,8 +187,54 @@ describe("Truelist", () => {
       const account: AccountInfo = await client.account.get();
 
       expect(account.email).toBe("team@company.com");
-      expect(account.plan).toBe("pro");
-      expect(account.credits).toBe(9500);
+      expect(account.name).toBe("Team Lead");
+      expect(account.uuid).toBe("a3828d19-1234-5678-9abc-def012345678");
+      expect(account.timeZone).toBe("America/New_York");
+      expect(account.isAdminRole).toBe(true);
+      expect(account.account.name).toBe("Company Inc");
+      expect(account.account.paymentPlan).toBe("pro");
+    });
+  });
+
+  describe("convenience methods", () => {
+    it("isValid returns true when state is ok", () => {
+      const result = { state: "ok" } as ValidationResult;
+      expect(isValid(result)).toBe(true);
+    });
+
+    it("isValid returns false when state is not ok", () => {
+      const result = { state: "email_invalid" } as ValidationResult;
+      expect(isValid(result)).toBe(false);
+    });
+
+    it("isInvalid returns true when state is email_invalid", () => {
+      const result = { state: "email_invalid" } as ValidationResult;
+      expect(isInvalid(result)).toBe(true);
+    });
+
+    it("isInvalid returns false when state is ok", () => {
+      const result = { state: "ok" } as ValidationResult;
+      expect(isInvalid(result)).toBe(false);
+    });
+
+    it("isDisposable returns true when subState is is_disposable", () => {
+      const result = { subState: "is_disposable" } as ValidationResult;
+      expect(isDisposable(result)).toBe(true);
+    });
+
+    it("isDisposable returns false when subState is email_ok", () => {
+      const result = { subState: "email_ok" } as ValidationResult;
+      expect(isDisposable(result)).toBe(false);
+    });
+
+    it("isRole returns true when subState is is_role", () => {
+      const result = { subState: "is_role" } as ValidationResult;
+      expect(isRole(result)).toBe(true);
+    });
+
+    it("isRole returns false when subState is email_ok", () => {
+      const result = { subState: "email_ok" } as ValidationResult;
+      expect(isRole(result)).toBe(false);
     });
   });
 
@@ -283,7 +335,7 @@ describe("Truelist", () => {
       const client = new Truelist(API_KEY, { maxRetries: 1 });
       const result = await client.email.validate("user@example.com");
 
-      expect(result.state).toBe("valid");
+      expect(result.state).toBe("ok");
       expect(fetchSpy).toHaveBeenCalledTimes(2);
     });
 
@@ -297,7 +349,7 @@ describe("Truelist", () => {
       const client = new Truelist(API_KEY, { maxRetries: 1 });
       const result = await client.email.validate("user@example.com");
 
-      expect(result.state).toBe("valid");
+      expect(result.state).toBe("ok");
       expect(fetchSpy).toHaveBeenCalledTimes(2);
     });
 
@@ -323,7 +375,7 @@ describe("Truelist", () => {
       const client = new Truelist(API_KEY, { maxRetries: 1 });
       const result = await client.email.validate("user@example.com");
 
-      expect(result.state).toBe("valid");
+      expect(result.state).toBe("ok");
       expect(fetchSpy).toHaveBeenCalledTimes(2);
     });
 
@@ -403,6 +455,14 @@ describe("Truelist", () => {
     it("exports VERSION", async () => {
       const mod = await import("../src/index");
       expect(mod.VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    });
+
+    it("exports convenience methods", async () => {
+      const mod = await import("../src/index");
+      expect(mod.isValid).toBeDefined();
+      expect(mod.isInvalid).toBeDefined();
+      expect(mod.isDisposable).toBeDefined();
+      expect(mod.isRole).toBeDefined();
     });
   });
 

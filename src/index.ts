@@ -1,5 +1,6 @@
 export { default } from "./client";
 export { default as Truelist } from "./client";
+export { isValid, isInvalid, isDisposable, isRole } from "./client";
 
 export { VERSION } from "./version";
 
